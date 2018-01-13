@@ -1,0 +1,2 @@
+contrib/completion/you-get.fish usr/share/fish/completions
+contrib/completion/_you-get usr/share/zsh/vendor-completions

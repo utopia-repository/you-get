@@ -1,0 +1,14 @@
+#!/usr/bin/make -f
+export PYBUILD_NAME=you-get
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+override_dh_auto_test:
+	# We don't have network access in build environments, so testing whether
+	# downloaders work is pretty much pointless.
+	true
+
+override_dh_auto_clean:
+	dh_auto_clean
+	rm -rf src/you_get.egg-info/

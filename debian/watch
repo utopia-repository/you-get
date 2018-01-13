@@ -1,0 +1,8 @@
+version=4
+
+# TODO
+#opts="pgpsigurlmangle=s%$%.asc%"
+
+opts="filenamemangle=s%(?:.*?)?v?(\d[\d.]*)\.tar\.gz%you-get-$1.tar.gz%" \
+   https://github.com/soimort/you-get/tags \
+   (?:.*?/)?v?(\d[\d.]*)\.tar\.gz debian uupdate
