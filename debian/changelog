@@ -1,3 +1,9 @@
+you-get (0.4.1025-0utopia1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- James Lu <james@overdrivenetworks.com>  Tue, 20 Feb 2018 18:49:24 -0800
+
 you-get (0.4.1011-0utopia1) unstable; urgency=medium
 
   * Utopia Repository upload.
