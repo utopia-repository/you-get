@@ -1,3 +1,10 @@
+you-get (0.4.1077-0utopia1) unstable; urgency=medium
+
+  * New upstream release.
+  * Bump Standards-Version to 4.1.4, no changes needed.
+
+ -- James Lu <james@overdrivenetworks.com>  Wed, 06 Jun 2018 02:14:49 -0700
+
 you-get (0.4.1025-0utopia1) unstable; urgency=medium
 
   * New upstream release.
