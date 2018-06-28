@@ -169,15 +169,17 @@ class Bilibili(VideoExtractor):
             tc_flashvars = tc_flashvars.group(1)
         if tc_flashvars is not None:
             self.out = True
-            qq_download_by_vid(tc_flashvars, self.title, output_dir=kwargs['output_dir'], merge=kwargs['merge'], info_only=kwargs['info_only'])
+            qq_download_by_vid(tc_flashvars, self.title, True, output_dir=kwargs['output_dir'], merge=kwargs['merge'], info_only=kwargs['info_only'])
             return
 
         has_plist = re.search(r'"page":2', self.page)
-        if has_plist:
+        if has_plist and not kwargs.get('playlist'):
             log.w('This page contains a playlist. (use --playlist to download all videos.)')
 
         try:
-            cid = re.search(r'cid=(\d+)', self.page).group(1)
+            page_list = json.loads(re.search(r'"pages":(\[.*?\])', self.page).group(1))
+            index_id = int(re.search(r'index_(\d+)', self.url).group(1))
+            cid = page_list[index_id-1]['cid'] # change cid match rule
         except:
             cid = re.search(r'"cid":(\d+)', self.page).group(1)
         if cid is not None:
@@ -339,6 +341,7 @@ def parse_cid_playurl(xml):
 
 def bilibili_download_playlist_by_url(url, **kwargs):
     url = url_locations([url])[0]
+    kwargs['playlist'] = True
     # a bangumi here? possible?
     if 'live.bilibili' in url:
         site.download_by_url(url)
@@ -357,7 +360,7 @@ def bilibili_download_playlist_by_url(url, **kwargs):
         page_cnt = len(page_list)
         for no in range(1, page_cnt+1):
             page_url = 'http://www.bilibili.com/video/av{}/index_{}.html'.format(aid, no)
-            subtitle = page_list[no-1]['pagename']
+            subtitle = '#%s. %s'% (page_list[no-1]['page'], page_list[no-1]['pagename'])
             Bilibili().download_by_url(page_url, subtitle=subtitle, **kwargs)
 
 site = Bilibili()
