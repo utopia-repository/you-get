@@ -143,7 +143,7 @@ fake_headers = {
     'Accept-Charset': 'UTF-8,*;q=0.5',
     'Accept-Encoding': 'gzip,deflate,sdch',
     'Accept-Language': 'en-US,en;q=0.8',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:51.0) Gecko/20100101 Firefox/51.0',  # noqa
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:60.0) Gecko/20100101 Firefox/60.0',  # noqa
 }
 
 if sys.stdout.isatty():
@@ -369,13 +369,16 @@ def get_decoded_html(url, faker=False):
         return data
 
 
-def get_location(url):
+def get_location(url, headers=None, get_method='HEAD'):
     logging.debug('get_location: %s' % url)
 
-    response = request.urlopen(url)
-    # urllib will follow redirections and it's too much code to tell urllib
-    # not to do that
-    return response.geturl()
+    if headers:
+        req = request.Request(url, headers=headers)
+    else:
+        req = request.Request(url)
+    req.get_method = lambda: get_method
+    res = urlopen_with_retry(req)
+    return res.geturl()
 
 
 def urlopen_with_retry(*args, **kwargs):
@@ -436,7 +439,7 @@ def get_content(url, headers={}, decoded=True):
     return data
 
 
-def post_content(url, headers={}, post_data={}, decoded=True):
+def post_content(url, headers={}, post_data={}, decoded=True, **kwargs):
     """Post the content of a URL via sending a HTTP POST request.
 
     Args:
@@ -447,14 +450,19 @@ def post_content(url, headers={}, post_data={}, decoded=True):
     Returns:
         The content as a string.
     """
-
-    logging.debug('post_content: %s \n post_data: %s' % (url, post_data))
+    if kwargs.get('post_data_raw'):
+        logging.debug('post_content: %s\npost_data_raw: %s' % (url, kwargs['post_data_raw']))
+    else:
+        logging.debug('post_content: %s\npost_data: %s' % (url, post_data))
 
     req = request.Request(url, headers=headers)
     if cookies:
         cookies.add_cookie_header(req)
         req.headers.update(req.unredirected_hdrs)
-    post_data_enc = bytes(parse.urlencode(post_data), 'utf-8')
+    if kwargs.get('post_data_raw'):
+        post_data_enc = bytes(kwargs['post_data_raw'], 'utf-8')
+    else:
+        post_data_enc = bytes(parse.urlencode(post_data), 'utf-8')
     response = urlopen_with_retry(req, data=post_data_enc)
     data = response.read()
 
@@ -496,7 +504,7 @@ def urls_size(urls, faker=False, headers={}):
     return sum([url_size(url, faker=faker, headers=headers) for url in urls])
 
 
-def get_head(url, headers={}, get_method='HEAD'):
+def get_head(url, headers=None, get_method='HEAD'):
     logging.debug('get_head: %s' % url)
 
     if headers:
@@ -505,7 +513,7 @@ def get_head(url, headers={}, get_method='HEAD'):
         req = request.Request(url)
     req.get_method = lambda: get_method
     res = urlopen_with_retry(req)
-    return dict(res.headers)
+    return res.headers
 
 
 def url_info(url, faker=False, headers={}):
@@ -599,7 +607,12 @@ def url_save(
     # the key must be 'Referer' for the hack here
     if refer is not None:
         tmp_headers['Referer'] = refer
-    file_size = url_size(url, faker=faker, headers=tmp_headers)
+    if type(url) is list:
+        file_size = urls_size(url, faker=faker, headers=tmp_headers)
+        is_chunked, urls = True, url
+    else:
+        file_size = url_size(url, faker=faker, headers=tmp_headers)
+        is_chunked, urls = False, [url]
 
     continue_renameing = True
     while continue_renameing:
@@ -652,70 +665,78 @@ def url_save(
     else:
         open_mode = 'wb'
 
-    if received < file_size:
-        if faker:
-            tmp_headers = fake_headers
-        '''
-        if parameter headers passed in, we have it copied as tmp_header
-        elif headers:
-            headers = headers
-        else:
-            headers = {}
-        '''
-        if received:
-            tmp_headers['Range'] = 'bytes=' + str(received) + '-'
-        if refer:
-            tmp_headers['Referer'] = refer
+    for url in urls:
+        received_chunk = 0
+        if received < file_size:
+            if faker:
+                tmp_headers = fake_headers
+            '''
+            if parameter headers passed in, we have it copied as tmp_header
+            elif headers:
+                headers = headers
+            else:
+                headers = {}
+            '''
+            if received and not is_chunked:  # only request a range when not chunked
+                tmp_headers['Range'] = 'bytes=' + str(received) + '-'
+            if refer:
+                tmp_headers['Referer'] = refer
 
-        if timeout:
-            response = urlopen_with_retry(
-                request.Request(url, headers=tmp_headers), timeout=timeout
-            )
-        else:
-            response = urlopen_with_retry(
-                request.Request(url, headers=tmp_headers)
-            )
-        try:
-            range_start = int(
-                response.headers[
-                    'content-range'
-                ][6:].split('/')[0].split('-')[0]
-            )
-            end_length = int(
-                response.headers['content-range'][6:].split('/')[1]
-            )
-            range_length = end_length - range_start
-        except:
-            content_length = response.headers['content-length']
-            range_length = int(content_length) if content_length is not None \
-                else float('inf')
+            if timeout:
+                response = urlopen_with_retry(
+                    request.Request(url, headers=tmp_headers), timeout=timeout
+                )
+            else:
+                response = urlopen_with_retry(
+                    request.Request(url, headers=tmp_headers)
+                )
+            try:
+                range_start = int(
+                    response.headers[
+                        'content-range'
+                    ][6:].split('/')[0].split('-')[0]
+                )
+                end_length = int(
+                    response.headers['content-range'][6:].split('/')[1]
+                )
+                range_length = end_length - range_start
+            except:
+                content_length = response.headers['content-length']
+                range_length = int(content_length) if content_length is not None \
+                    else float('inf')
 
-        if file_size != received + range_length:
-            received = 0
-            if bar:
-                bar.received = 0
-            open_mode = 'wb'
-
-        with open(temp_filepath, open_mode) as output:
-            while True:
-                buffer = None
-                try:
-                    buffer = response.read(1024 * 256)
-                except socket.timeout:
-                    pass
-                if not buffer:
-                    if received == file_size:  # Download finished
-                        break
-                    # Unexpected termination. Retry request
-                    tmp_headers['Range'] = 'bytes=' + str(received) + '-'
-                    response = urlopen_with_retry(
-                        request.Request(url, headers=tmp_headers)
-                    )
-                    continue
-                output.write(buffer)
-                received += len(buffer)
+            if is_chunked:  # always append if chunked
+                open_mode = 'ab'
+            elif file_size != received + range_length:  # is it ever necessary?
+                received = 0
                 if bar:
-                    bar.update_received(len(buffer))
+                    bar.received = 0
+                open_mode = 'wb'
+
+            with open(temp_filepath, open_mode) as output:
+                while True:
+                    buffer = None
+                    try:
+                        buffer = response.read(1024 * 256)
+                    except socket.timeout:
+                        pass
+                    if not buffer:
+                        if is_chunked and received_chunk == range_length:
+                            break
+                        elif not is_chunked and received == file_size:  # Download finished
+                            break
+                        # Unexpected termination. Retry request
+                        if not is_chunked:  # when
+                            tmp_headers['Range'] = 'bytes=' + str(received) + '-'
+                        response = urlopen_with_retry(
+                            request.Request(url, headers=tmp_headers)
+                        )
+                        continue
+                    output.write(buffer)
+                    received += len(buffer)
+                    received_chunk += len(buffer)
+                    if bar:
+                        bar.update_received(len(buffer))
 
     assert received == os.path.getsize(temp_filepath), '%s == %s == %s' % (
         received, os.path.getsize(temp_filepath), temp_filepath
@@ -1594,15 +1615,11 @@ def url_to_module(url):
             url
         )
     else:
-        import http.client
-        video_host = r1(r'https?://([^/]+)/', url)  # .cn could be removed
-        if url.startswith('https://'):
-            conn = http.client.HTTPSConnection(video_host)
-        else:
-            conn = http.client.HTTPConnection(video_host)
-        conn.request('HEAD', video_url, headers=fake_headers)
-        res = conn.getresponse()
-        location = res.getheader('location')
+        try:
+            location = get_location(url) # t.co isn't happy with fake_headers
+        except:
+            location = get_location(url, headers=fake_headers)
+
         if location and location != url and not location.startswith('/'):
             return url_to_module(location)
         else:
